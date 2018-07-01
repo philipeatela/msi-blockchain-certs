@@ -3,14 +3,19 @@ import "node_modules/openzeppelin-solidity/contracts/math/SafeMath.sol";
 
 contract MsiBlockCerts{
 
+    // Math functions with verified safety implementations
     using SafeMath for uint256;
 
+    /*------ Data Models ------*/
+
+    // Represents a certification issuer
     struct Issuer {
         address issuingAccount;
         string issuerName;
         bool active;
     }
 
+    // Represents a certificate class
     struct CertificateClass {
         string certificateName;
         string certificateDescription;
@@ -18,38 +23,49 @@ contract MsiBlockCerts{
         bool valid;
     }
 
+    // Represents an issued certificate
     struct IssuedCertificate {
-        //address transactionAddress;
         address issuingAddress;
         address recipientAddress;
+        uint certificateId;
         bytes digitalSignature;
         bool valid;
     }
 
-    //Issuer[] public registeredIssuers;
+    /*------ Data Storage ------*/
+
+    // Stores an indexed list of registered issuers
     mapping(uint => Issuer) private registeredIssuers;
     uint public totalIssuers;
 
-    //CertificateClass[] public registeredCertificates;
+    // Stores an indexed list of certificate classes
     mapping(uint => CertificateClass) private registeredCertificates;
     uint public totalCertificates;
 
-    //IssuedCertificate[] public issuedCertificates;
+    // Stores an indexed list of registered isued certifications
     mapping(uint => IssuedCertificate) private issuedCertificates;
     uint public totalIssuedCertificates;
 
+    // Stores an indexed list of the registered issuer's addresses, for easier access
+    // This avoids having to recover issuing address information from the Issuer struct
     mapping(address => uint) private accounts;
 
+    /*------ Events ------*/
+
+    // Emmits events in order to log the operations performed in the system
     event LogAddedIssuer(address issuingAccount, uint issuerId, string issuerName);
     event LogAddedCertificate(address issuingAccount, uint certificateId, string certificateName, string certificateDescription);
     event LogIssuedCertification(address issuingAccount, address recipientAddress, bytes digitalSignature, uint certificationId);    
 
+    /*------ Modifiers ------*/
     modifier onlyCertificateIssuer(uint certificateId){
         require(isCertificateIssuer(msg.sender, certificateId), "The user isn't an issuer");
         _;
     }
 
-    modifier onlyActiveIssuer(uint issuerId){
+    modifier onlyActiveIssuer(address issuerAccount){
+        uint issuerId = accounts[issuerAccount];
+
         require(totalIssuers >= issuerId && issuerId > uint(0), "Invalid issuer");
         require(registeredIssuers[issuerId].active, "Inactive issuer");
         _;
@@ -67,6 +83,7 @@ contract MsiBlockCerts{
         _;
     }
 
+    /*------ Validation Functions ------*/
     function isCertificateIssuer(address account, uint certificateId)
       view
       internal
@@ -75,50 +92,72 @@ contract MsiBlockCerts{
         return registeredCertificates[certificateId].issuingInstitutionAddress == account;
     }
 
+    /*------ Main Functions ------*/
     function addIssuer(string issuerName)
-      public
-      //returns(uint)  
+      public 
     {
+        // Sets the issuer address as the contract caller's address
         address issuingAccount = msg.sender;
+
+        // Creates new Issuer object
         Issuer memory newIssuer = Issuer(issuingAccount, issuerName, true);
 
+        // Increments total issuers tracker
         totalIssuers = totalIssuers.add(1);
+
+        // Stores new issuer object on the last position of the mapping structure
         registeredIssuers[totalIssuers] = newIssuer;
+
+        // Stores new valid emitting address on the accounts mapping structure
         accounts[issuingAccount] = totalIssuers;
 
-        //log        
+        // Logs addition of this issuer      
         emit LogAddedIssuer(issuingAccount, totalIssuers, issuerName);
-        
-        //return registeredIssuers.length - 1;
     }
 
-    function addCertificate(string name, string description, address issuingAccount)
+    function addCertificate(string name, string description)
+      onlyActiveIssuer(msg.sender)
       public
-      //returns (uint)
-    {      
-        CertificateClass memory newCertificate = CertificateClass(name, description, issuingAccount, true);
+    {     
+        // Sets the issuer institution's address as the contract caller's address
+        address ownerInstitutionAddress = msg.sender;
 
+        // Creates new certification object
+        CertificateClass memory newCertificate = CertificateClass(name, description, ownerInstitutionAddress, true);
+
+        // Icrements total certificates tracker
         totalCertificates = totalCertificates.add(1);
+
+        // Stores the new certificate object on the last position of the mapping structure
         registeredCertificates[totalCertificates] = newCertificate;
 
-        //log
-        emit LogAddedCertificate(issuingAccount, totalCertificates, name, description);
-        //return registeredCertificates.length - 1;
+        // Log addition of new certificate
+        emit LogAddedCertificate(ownerInstitutionAddress, totalCertificates, name, description);
     }
 
-    function issueCertificate(address issuingAddress, address recipientAddress, bytes digitalSignature)
+    function issueCertificate(address recipientAddress, uint certificateId, bytes digitalSignature)
+      onlyValidCertificate(certificateId)
+      onlyCertificateIssuer(certificateId)
       public
-      //returns (uint)
+      returns (uint issuedCertificateId)
     {
-        IssuedCertificate memory newCertification = IssuedCertificate(issuingAddress, recipientAddress, digitalSignature, true);
+        // Sets issuing address as the contract caller's address
+        address issuingAddress = msg.sender;
 
+        // Creates new issued certificate object
+        IssuedCertificate memory newCertification = IssuedCertificate(issuingAddress, recipientAddress, certificateId, digitalSignature, true);
+
+        // Increments issued certifications tracker
         totalIssuedCertificates = totalIssuedCertificates.add(1);
+
+        // Stores new object on the last position of the mapping structure
         issuedCertificates[totalIssuedCertificates] = newCertification;
 
-        //log    
-        emit LogIssuedCertification(issuingAddress, recipientAddress, digitalSignature, totalIssuedCertificates);
+        // This ID value is returned to the front-end to be stored on the JSON certificate output
+        issuedCertificateId = totalIssuedCertificates;
 
-        //return issuedCertificates.length - 1;
+        // Log certificate issuing
+        emit LogIssuedCertification(issuingAddress, recipientAddress, digitalSignature, totalIssuedCertificates);
     }
 
 }
