@@ -160,4 +160,25 @@ contract MsiBlockCerts{
         emit LogIssuedCertification(issuingAddress, recipientAddress, digitalSignature, totalIssuedCertificates);
     }
 
+    // Verification function draft - not working yet
+    function verifyCertificate(uint issuingId, bytes calculatedHash)
+      onlyValidIssuedCertification(issuingId)
+      public
+      view
+      returns (bool validCertificate)
+    {
+        // Recovers the issued certificate object from the mapping structure
+        IssuedCertificate memory certificate = issuedCertificates[issuingId];
+
+        // Recovers digital signature from the issued certificate object
+        bytes memory digSignature = certificate.digitalSignature;
+
+        // @TODO: It is still necessary to implement the digital signature
+        // verification.
+        if(keccak256(digSignature) == keccak256(calculatedHash))
+            return true;
+        else
+            return false;
+    }
+
 }
